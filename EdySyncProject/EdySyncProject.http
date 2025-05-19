@@ -1,0 +1,6 @@
+@EdySyncProject_HostAddress = http://localhost:5109
+
+GET {{EdySyncProject_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

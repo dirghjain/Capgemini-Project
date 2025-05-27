@@ -8,6 +8,11 @@ public class EduSyncContext : DbContext
     public DbSet<Course> Courses { get; set; }
     public DbSet<Assessment> Assessments { get; set; }
     public DbSet<Result> Results { get; set; }
+    public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+    public DbSet<Enrollment> Enrollments { get; set; }
+    public DbSet<Question> Questions { get; set; }
+
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -21,9 +26,19 @@ public class EduSyncContext : DbContext
             .WithOne(a => a.Course)
             .HasForeignKey(a => a.CourseId);
 
+        modelBuilder.Entity<Assessment>()
+            .HasMany(a => a.Results)
+            .WithOne(r => r.Assessment)
+            .HasForeignKey(r => r.AssessmentId);
+
         modelBuilder.Entity<User>()
             .HasMany(u => u.Results)
             .WithOne(r => r.User)
             .HasForeignKey(r => r.UserId);
+
+        modelBuilder.Entity<PasswordResetToken>()
+            .HasOne(t => t.User)
+            .WithMany() 
+            .HasForeignKey(t => t.UserId);
     }
 }

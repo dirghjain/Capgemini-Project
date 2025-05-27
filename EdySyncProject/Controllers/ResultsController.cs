@@ -2,9 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace EdySyncProject.Controllers
 {
@@ -21,86 +22,112 @@ namespace EdySyncProject.Controllers
 
         // GET: api/Results
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Result>>> GetResults()
+        [Authorize(Roles = "Instructor,Student")]
+        public async Task<ActionResult<IEnumerable<ResultDTO>>> GetResults()
         {
-            return await _context.Results.ToListAsync();
+            // Get current user's id and role from JWT
+            var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+            var roleClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role);
+
+            if (userIdClaim == null || roleClaim == null)
+                return Unauthorized();
+
+            var userId = Guid.Parse(userIdClaim.Value);
+            var role = roleClaim.Value;
+
+            if (role == "Student")
+            {
+                // Students: Only their own results
+                var results = await _context.Results
+                    .Where(r => r.UserId == userId)
+                    .Select(r => new ResultDTO
+                    {
+                        ResultId = r.ResultId,
+                        AssessmentId = r.AssessmentId,
+                        UserId = r.UserId,
+                        Score = r.Score,
+                        AttemptDate = r.AttemptDate
+                    })
+                    .ToListAsync();
+
+                return Ok(results);
+            }
+            else if (role == "Instructor")
+            {
+                // Instructors: Results of students enrolled in their courses
+                var instructorCourseIds = await _context.Courses
+                    .Where(c => c.InstructorId == userId)
+                    .Select(c => c.CourseId)
+                    .ToListAsync();
+
+                var results = await _context.Results
+                    .Include(r => r.Assessment)
+                    .Where(r => instructorCourseIds.Contains(r.Assessment.CourseId))
+                    .Select(r => new ResultDTO
+                    {
+                        ResultId = r.ResultId,
+                        AssessmentId = r.AssessmentId,
+                        UserId = r.UserId,
+                        Score = r.Score,
+                        AttemptDate = r.AttemptDate
+                    })
+                    .ToListAsync();
+
+                return Ok(results);
+            }
+            else
+            {
+                return Forbid();
+            }
         }
 
-        // GET: api/Results/5
+        // GET: api/Results/{id}
         [HttpGet("{id}")]
-        public async Task<ActionResult<Result>> GetResult(Guid id)
+        [Authorize(Roles = "Instructor,Student")]
+        public async Task<ActionResult<ResultDTO>> GetResult(Guid id)
         {
-            var result = await _context.Results.FindAsync(id);
+            var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+            var roleClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role);
+
+            if (userIdClaim == null || roleClaim == null)
+                return Unauthorized();
+
+            var userId = Guid.Parse(userIdClaim.Value);
+            var role = roleClaim.Value;
+
+            var result = await _context.Results
+                .Include(r => r.Assessment)
+                .FirstOrDefaultAsync(r => r.ResultId == id);
 
             if (result == null)
-            {
                 return NotFound();
-            }
 
-            return result;
-        }
-
-        // PUT: api/Results/5
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPut("{id}")]
-        public async Task<IActionResult> PutResult(Guid id, Result result)
-        {
-            if (id != result.ResultId)
+            if (role == "Student")
             {
-                return BadRequest();
+                // Student can only see their own result
+                if (result.UserId != userId)
+                    return Forbid();
             }
-
-            _context.Entry(result).State = EntityState.Modified;
-
-            try
+            else if (role == "Instructor")
             {
-                await _context.SaveChangesAsync();
+                // Instructor can only see results for their courses
+                var isInstructorCourse = await _context.Courses
+                    .AnyAsync(c => c.CourseId == result.Assessment.CourseId && c.InstructorId == userId);
+
+                if (!isInstructorCourse)
+                    return Forbid();
             }
-            catch (DbUpdateConcurrencyException)
+
+            var dto = new ResultDTO
             {
-                if (!ResultExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+                ResultId = result.ResultId,
+                AssessmentId = result.AssessmentId,
+                UserId = result.UserId,
+                Score = result.Score,
+                AttemptDate = result.AttemptDate
+            };
 
-            return NoContent();
-        }
-
-        // POST: api/Results
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPost]
-        public async Task<ActionResult<Result>> PostResult(Result result)
-        {
-            _context.Results.Add(result);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction("GetResult", new { id = result.ResultId }, result);
-        }
-
-        // DELETE: api/Results/5
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteResult(Guid id)
-        {
-            var result = await _context.Results.FindAsync(id);
-            if (result == null)
-            {
-                return NotFound();
-            }
-
-            _context.Results.Remove(result);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
-        }
-
-        private bool ResultExists(Guid id)
-        {
-            return _context.Results.Any(e => e.ResultId == id);
+            return Ok(dto);
         }
     }
 }

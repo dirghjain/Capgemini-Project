@@ -65,7 +65,7 @@ public class AuthController : ControllerBase
             return Unauthorized("Invalid credentials.");
 
         if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
-            return Unauthorized("Invalid credentials.");
+            return Unauthorized("Wrong Password");
 
         var token = GenerateJwtToken(user); 
         return Ok(new { token });

@@ -129,6 +129,20 @@ namespace EdySyncProject.Controllers
             return CreatedAtAction(nameof(GetAssessment), new { id = assessment.AssessmentId }, result);
         }
 
+        [HttpGet("{id}/attempt-status")]
+        [Authorize(Roles = "Student")]
+        public async Task<IActionResult> GetAttemptStatus(Guid id)
+        {
+            var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier);
+            if (userIdClaim == null)
+                return Unauthorized();
+
+            var userId = Guid.Parse(userIdClaim.Value);
+            var alreadyAttempted = await _context.Results.AnyAsync(r => r.AssessmentId == id && r.UserId == userId);
+            return Ok(new { attempted = alreadyAttempted });
+        }
+
+
 
 
         [HttpPost("{id}/attempt")]
@@ -188,19 +202,28 @@ namespace EdySyncProject.Controllers
         {
             var assessment = await _context.Assessments
                 .Include(a => a.Questions)
+                .Include(a => a.Results)
                 .FirstOrDefaultAsync(a => a.AssessmentId == id);
 
             if (assessment == null)
                 return NotFound();
 
-            // Remove all related questions (if not cascade)
-            _context.Questions.RemoveRange(assessment.Questions);
+            // Remove all related results
+            if (assessment.Results != null && assessment.Results.Any())
+                _context.Results.RemoveRange(assessment.Results);
 
+            // Remove all related questions
+            if (assessment.Questions != null && assessment.Questions.Any())
+                _context.Questions.RemoveRange(assessment.Questions);
+
+            // Remove the assessment itself
             _context.Assessments.Remove(assessment);
+
             await _context.SaveChangesAsync();
 
             return NoContent();
         }
+
 
     }
 }

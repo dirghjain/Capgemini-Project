@@ -9,4 +9,5 @@
     public User Instructor { get; set; }
 
     public ICollection<Assessment> Assessments { get; set; }
+    public ICollection<Enrollment> Enrollments { get; set; }
 }

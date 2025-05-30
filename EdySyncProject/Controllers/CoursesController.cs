@@ -108,6 +108,40 @@ namespace EdySyncProject.Controllers
 
             return Ok(new { enrolled = isEnrolled });
         }
+        // GET: api/Courses/enrolled
+        [HttpGet("enrolled")]
+        [Authorize(Roles = "Student")]
+        public async Task<ActionResult<IEnumerable<CourseDTO>>> GetEnrolledCourses()
+        {
+            var userIdClaim = User.Claims.FirstOrDefault(c =>
+                c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
+            if (userIdClaim == null)
+                return Unauthorized();
+
+            var userId = Guid.Parse(userIdClaim.Value);
+
+            // Find all course IDs this student is enrolled in
+            var enrolledCourseIds = await _context.Enrollments
+                .Where(e => e.UserId == userId)
+                .Select(e => e.CourseId)
+                .ToListAsync();
+
+            // Get course details for those courses
+            var courses = await _context.Courses
+                .Where(c => enrolledCourseIds.Contains(c.CourseId))
+                .Select(course => new CourseDTO
+                {
+                    CourseId = course.CourseId,
+                    Title = course.Title,
+                    Description = course.Description,
+                    MediaUrl = course.MediaUrl,
+                    InstructorId = course.InstructorId
+                })
+                .ToListAsync();
+
+            return Ok(courses);
+        }
+
 
         // POST: api/Courses
         [HttpPost]
@@ -163,20 +197,47 @@ namespace EdySyncProject.Controllers
             return NoContent();
         }
 
-        // DELETE: api/Courses/5
         [HttpDelete("{id}")]
         [Authorize(Roles = "Instructor")]
         public async Task<IActionResult> DeleteCourse(Guid id)
         {
-            var course = await _context.Courses.FindAsync(id);
+            // Load all related data
+            var course = await _context.Courses
+                .Include(c => c.Assessments)
+                    .ThenInclude(a => a.Results)
+                .Include(c => c.Assessments)
+                    .ThenInclude(a => a.Questions)
+                .Include(c => c.Enrollments)
+                .FirstOrDefaultAsync(c => c.CourseId == id);
+
             if (course == null)
                 return NotFound();
 
+            foreach (var assessment in course.Assessments ?? new List<Assessment>())
+            {
+                if (assessment.Results != null && assessment.Results.Any())
+                    _context.Results.RemoveRange(assessment.Results);
+
+                if (assessment.Questions != null && assessment.Questions.Any())
+                    _context.Questions.RemoveRange(assessment.Questions);
+            }
+
+            // Remove all related assessments
+            if (course.Assessments != null && course.Assessments.Any())
+                _context.Assessments.RemoveRange(course.Assessments);
+
+            // Remove all related enrollments
+            if (course.Enrollments != null && course.Enrollments.Any())
+                _context.Enrollments.RemoveRange(course.Enrollments);
+
+            // Finally, remove the course itself
             _context.Courses.Remove(course);
+
             await _context.SaveChangesAsync();
 
             return NoContent();
         }
+
 
         private bool CourseExists(Guid id)
         {

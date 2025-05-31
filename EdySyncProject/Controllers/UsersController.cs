@@ -76,4 +76,37 @@ public class UsersController : ControllerBase
         await _context.SaveChangesAsync();
         return NoContent();
     }
+    [HttpPost]
+[Authorize(Roles = "Instructor")]
+public async Task<ActionResult<UserDTO>> CreateUser(CreateUserDTO dto)
+{
+    // Optionally validate input here (e.g., check for existing email)
+    var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+    if (existingUser != null)
+    {
+        return BadRequest("Email already exists.");
+    }
+
+    var user = new User
+    {
+        UserId = Guid.NewGuid(),
+        Name = dto.Name,
+        Email = dto.Email,
+        Role = dto.Role,
+        PasswordHash = dto.PasswordHash // Ideally, hash this before saving
+    };
+
+    _context.Users.Add(user);
+    await _context.SaveChangesAsync();
+
+    var userDto = new UserDTO
+    {
+        UserId = user.UserId,
+        Name = user.Name,
+        Email = user.Email,
+        Role = user.Role
+    };
+
+    return CreatedAtAction(nameof(GetUser), new { id = user.UserId }, userDto);
+}
 }

@@ -22,37 +22,42 @@ public class AuthController : ControllerBase
         _emailService = emailService;
     }
 
-    [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] CreateUserDTO dto)
+   [HttpPost("register")]
+public async Task<IActionResult> Register([FromBody] CreateUserDTO dto)
+{
+    if (string.IsNullOrWhiteSpace(dto.Role) ||
+        !(dto.Role.Trim().ToLower() == "student" || dto.Role.Trim().ToLower() == "instructor"))
     {
-        if (string.IsNullOrWhiteSpace(dto.Role) || dto.Role.Trim().ToLower() != "student")
-            return BadRequest("You can only register as a Student.");
-
-        if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
-            return BadRequest("Email already in use.");
-
-        var hashedPassword = BCrypt.Net.BCrypt.HashPassword(dto.PasswordHash);
-
-        var user = new User
-        {
-            Name = dto.Name,
-            Email = dto.Email,
-            Role = "Student", 
-            PasswordHash = hashedPassword
-        };
-
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
-        try
-        {
-            await _emailService.SendWelcomeEmailAsync(dto.Email, dto.Name);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Email send failed: " + ex.Message);
-        }
-        return Ok("Registration successful as Student!");
+        return BadRequest("Role must be either 'Student' or 'Instructor'.");
     }
+
+    if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+        return BadRequest("Email already in use.");
+
+    var hashedPassword = BCrypt.Net.BCrypt.HashPassword(dto.PasswordHash);
+
+    var user = new User
+    {
+        Name = dto.Name,
+        Email = dto.Email,
+        Role = dto.Role.Trim(),  // Retain casing as passed
+        PasswordHash = hashedPassword
+    };
+
+    _context.Users.Add(user);
+    await _context.SaveChangesAsync();
+
+    try
+    {
+        await _emailService.SendWelcomeEmailAsync(dto.Email, dto.Name);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Email send failed: " + ex.Message);
+    }
+
+    return Ok($"Registration successful as {user.Role}!");
+}
 
 
 

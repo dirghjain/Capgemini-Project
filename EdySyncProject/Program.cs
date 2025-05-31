@@ -8,14 +8,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        policy
-            .AllowAnyOrigin()
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        policy.WithOrigins("https://edusync-frontend-f6f8ckhycchqgsc0.japaneast-01.azurewebsites.net")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
     });
 });
+
+app.UseCors("AllowFrontend");
+
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -74,7 +77,6 @@ var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI();
-app.UseCors("AllowAll"); 
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
